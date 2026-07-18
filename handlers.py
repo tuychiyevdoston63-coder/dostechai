@@ -55,6 +55,8 @@ async def cmd_start(message: Message):
     user = message.from_user
     db.add_user(user.id, user.username, user.first_name, user.last_name)
     
+    company_name = db.get_setting('company_name')
+    
     if user.id == ADMIN_ID:
         await message.answer(
             f"👑 Admin panelga xush kelibsiz, {user.first_name}!\n\n"
@@ -64,7 +66,7 @@ async def cmd_start(message: Message):
     else:
         await message.answer(
             f"👋 Assalomu alaykum, {user.first_name}!\n\n"
-            f"**{db.get_setting('company_name')}** rasmiy botiga xush kelibsiz!\n\n"
+            f"**{company_name}** rasmiy botiga xush kelibsiz!\n\n"
             "Quyidagi menyudan kerakli bo'limni tanlang:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=kb.get_main_menu_keyboard()
@@ -102,7 +104,7 @@ async def news_list(message: Message):
         await message.answer("Hozircha yangiliklar mavjud emas.")
         return
     
-    for news in news_list[:5]:  # Show last 5 news
+    for news in news_list[:5]:
         text = f"📰 **{news[1]}**\n\n{news[3][:200]}...\n\n📅 {news[4]}"
         if news[2]:
             await message.answer_photo(
@@ -136,16 +138,19 @@ async def profile(message: Message):
     orders_count = db.get_user_orders_count(message.from_user.id)
     suggestions_count = db.get_user_suggestions_count(message.from_user.id)
     
-    text = f"""
-👤 **Profilingiz**
-
-🆔 ID: `{user_data[1]}`
-👤 Ism: {user_data[3] or 'Noma\'lum'}
-📝 Username: @{user_data[2] or 'Noma\'lum'}
-📅 Ro'yxatdan o'tgan: {user_data[6]}
-📦 Buyurtmalar: {orders_count}
-💡 Takliflar: {suggestions_count}
-    """
+    # Fiks qilingan qism
+    ism = user_data[3] if user_data[3] else "Noma'lum"
+    username = user_data[2] if user_data[2] else "Noma'lum"
+    
+    text = (
+        f"👤 **Profilingiz**\n\n"
+        f"🆔 ID: `{user_data[1]}`\n"
+        f"👤 Ism: {ism}\n"
+        f"📝 Username: @{username}\n"
+        f"📅 Ro'yxatdan o'tgan: {user_data[6]}\n"
+        f"📦 Buyurtmalar: {orders_count}\n"
+        f"💡 Takliflar: {suggestions_count}"
+    )
     await message.answer(text, parse_mode=ParseMode.MARKDOWN)
 
 @router.message(F.text == "📞 Aloqa")
@@ -154,12 +159,10 @@ async def contact(message: Message):
     telegram_channel = db.get_setting('telegram_channel')
     instagram = db.get_setting('instagram')
     website = db.get_setting('website')
+    company_name = db.get_setting('company_name')
     
-    text = f"""
-📞 **{db.get_setting('company_name')} bilan aloqa**
-
-Quyidagi havolalar orqali biz bilan bog'lanishingiz mumkin:
-    """
+    text = f"📞 **{company_name} bilan aloqa**\n\nQuyidagi havolalar orqali biz bilan bog'lanishingiz mumkin:"
+    
     await message.answer(
         text,
         parse_mode=ParseMode.MARKDOWN,
@@ -223,21 +226,18 @@ async def product_detail(callback: CallbackQuery):
         'reserved': '🟡 Band'
     }
     
-    text = f"""
-**{product[2]}**
-
-{product[4]}
-
-📝 **To'liq tavsif:**
-{product[5]}
-
-⚙️ **Funksiyalar:**
-{product[6]}
-
-💰 **Narx:** {product[7]}
-🔗 **Demo:** {product[8] if product[8] else 'Mavjud emas'}
-📊 **Holat:** {status_text.get(product[8], product[8])}
-    """
+    demo_url = product[8] if product[8] else 'Mavjud emas'
+    status = status_text.get(product[8], product[8])
+    
+    text = (
+        f"**{product[2]}**\n\n"
+        f"{product[4]}\n\n"
+        f"📝 **To'liq tavsif:**\n{product[5]}\n\n"
+        f"⚙️ **Funksiyalar:**\n{product[6]}\n\n"
+        f"💰 **Narx:** {product[7]}\n"
+        f"🔗 **Demo:** {demo_url}\n"
+        f"📊 **Holat:** {status}"
+    )
     
     if product[3]:
         await callback.message.answer_photo(
@@ -350,16 +350,21 @@ async def order_contact(message: Message, state: FSMContext):
     )
     
     # Notify admin
-    await message.bot.send_message(
-        ADMIN_ID,
+    user_info = f"{message.from_user.first_name} (@{message.from_user.username})"
+    admin_text = (
         f"📩 Yangi buyurtma #{order_id}\n\n"
-        f"👤 Foydalanuvchi: {message.from_user.first_name} (@{message.from_user.username})\n"
+        f"👤 Foydalanuvchi: {user_info}\n"
         f"📦 Turi: {data['project_type']}\n"
         f"📝 Tavsif: {data['description']}\n"
         f"⚙️ Funksiyalar: {data['features']}\n"
         f"💰 Budjet: {data['budget']}\n"
         f"⏰ Muddat: {data['deadline']}\n"
-        f"📞 Aloqa: {message.text}",
+        f"📞 Aloqa: {message.text}"
+    )
+    
+    await message.bot.send_message(
+        ADMIN_ID,
+        admin_text,
         reply_markup=kb.get_admin_order_status_keyboard(order_id)
     )
 
@@ -395,13 +400,18 @@ async def suggestion_additional(message: Message, state: FSMContext):
     )
     
     # Notify admin
-    await message.bot.send_message(
-        ADMIN_ID,
+    user_info = f"{message.from_user.first_name} (@{message.from_user.username})"
+    admin_text = (
         f"💡 Yangi taklif #{suggestion_id}\n\n"
-        f"👤 Foydalanuvchi: {message.from_user.first_name} (@{message.from_user.username})\n"
+        f"👤 Foydalanuvchi: {user_info}\n"
         f"📝 Nomi: {data['title']}\n"
         f"📄 Mazmuni: {data['content']}\n"
-        f"📎 Qo'shimcha: {message.text}",
+        f"📎 Qo'shimcha: {message.text}"
+    )
+    
+    await message.bot.send_message(
+        ADMIN_ID,
+        admin_text,
         reply_markup=kb.get_admin_suggestion_status_keyboard(suggestion_id)
     )
 
@@ -491,16 +501,15 @@ async def admin_statistics(message: Message):
         return
     stats = db.get_statistics()
     
-    text = f"""
-📊 **DOSTECH AI statistikasi**
-
-👥 Jami foydalanuvchilar: {stats['users']}
-📦 Jami mahsulotlar: {stats['products']}
-📩 Jami buyurtmalar: {stats['orders']}
-💡 Jami takliflar: {stats['suggestions']}
-📰 Jami yangiliklar: {stats['news']}
-🛒 Sotilgan mahsulotlar: {stats['sold_products']}
-    """
+    text = (
+        f"📊 **DOSTECH AI statistikasi**\n\n"
+        f"👥 Jami foydalanuvchilar: {stats['users']}\n"
+        f"📦 Jami mahsulotlar: {stats['products']}\n"
+        f"📩 Jami buyurtmalar: {stats['orders']}\n"
+        f"💡 Jami takliflar: {stats['suggestions']}\n"
+        f"📰 Jami yangiliklar: {stats['news']}\n"
+        f"🛒 Sotilgan mahsulotlar: {stats['sold_products']}"
+    )
     
     builder = kb.InlineKeyboardBuilder()
     builder.row(kb.InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_stats"))
@@ -565,14 +574,13 @@ async def admin_product_detail(callback: CallbackQuery):
         await callback.answer("Mahsulot topilmadi")
         return
     
-    text = f"""
-📦 **Mahsulot #{product[0]}**
-
-Nomi: {product[2]}
-Kategoriya: {product[1]}
-Narx: {product[6]}
-Holat: {product[8]}
-    """
+    text = (
+        f"📦 **Mahsulot #{product[0]}**\n\n"
+        f"Nomi: {product[2]}\n"
+        f"Kategoriya: {product[1]}\n"
+        f"Narx: {product[6]}\n"
+        f"Holat: {product[8]}"
+    )
     
     builder = kb.InlineKeyboardBuilder()
     builder.row(kb.InlineKeyboardButton(text="✏️ Tahrirlash", callback_data=f"edit_product_{product[0]}"))
@@ -592,21 +600,20 @@ async def delete_product(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("status_product_"))
 async def change_product_status(callback: CallbackQuery):
     product_id = int(callback.data.split("_")[2])
-    await callback.message.edit_text(
-        "Yangi holatni tanlang:",
-        reply_markup=kb.get_admin_product_status_keyboard()
+    
+    builder = kb.InlineKeyboardBuilder()
+    builder.row(
+        kb.InlineKeyboardButton(text="🟢 Mavjud", callback_data=f"set_status_{product_id}_available"),
+        kb.InlineKeyboardButton(text="🔴 Sotilgan", callback_data=f"set_status_{product_id}_sold")
     )
-    # Store product_id in callback data
-    await callback.message.edit_reply_markup(
-        reply_markup=kb.InlineKeyboardBuilder().row(
-            kb.InlineKeyboardButton(text="🟢 Mavjud", callback_data=f"set_status_{product_id}_available"),
-            kb.InlineKeyboardButton(text="🔴 Sotilgan", callback_data=f"set_status_{product_id}_sold")
-        ).row(
-            kb.InlineKeyboardButton(text="🟡 Band", callback_data=f"set_status_{product_id}_reserved")
-        ).row(
-            kb.InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"admin_product_{product_id}")
-        ).as_markup()
+    builder.row(
+        kb.InlineKeyboardButton(text="🟡 Band", callback_data=f"set_status_{product_id}_reserved")
     )
+    builder.row(
+        kb.InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"admin_product_{product_id}")
+    )
+    
+    await callback.message.edit_text("Yangi holatni tanlang:", reply_markup=builder.as_markup())
 
 @router.callback_query(F.data.startswith("set_status_"))
 async def set_product_status(callback: CallbackQuery):
@@ -628,15 +635,16 @@ async def admin_all_orders(callback: CallbackQuery):
         return
     
     builder = kb.InlineKeyboardBuilder()
+    status_emoji = {
+        'new': '🆕',
+        'reviewing': '👀',
+        'accepted': '✅',
+        'in_progress': '🔄',
+        'completed': '🏁',
+        'rejected': '❌'
+    }
+    
     for order in orders:
-        status_emoji = {
-            'new': '🆕',
-            'reviewing': '👀',
-            'accepted': '✅',
-            'in_progress': '🔄',
-            'completed': '🏁',
-            'rejected': '❌'
-        }
         emoji = status_emoji.get(order[8], '❓')
         builder.row(kb.InlineKeyboardButton(
             text=f"{emoji} #{order[0]} - {order[2]}", 
@@ -655,19 +663,18 @@ async def admin_order_detail(callback: CallbackQuery):
         await callback.answer("Buyurtma topilmadi")
         return
     
-    text = f"""
-📩 **Buyurtma #{order[0]}**
-
-👤 Foydalanuvchi ID: {order[1]}
-📦 Turi: {order[2]}
-📝 Tavsif: {order[3]}
-⚙️ Funksiyalar: {order[4]}
-💰 Budjet: {order[5]}
-⏰ Muddat: {order[6]}
-📞 Aloqa: {order[7]}
-📊 Holat: {order[8]}
-📅 Sana: {order[10]}
-    """
+    text = (
+        f"📩 **Buyurtma #{order[0]}**\n\n"
+        f"👤 Foydalanuvchi ID: {order[1]}\n"
+        f"📦 Turi: {order[2]}\n"
+        f"📝 Tavsif: {order[3]}\n"
+        f"⚙️ Funksiyalar: {order[4]}\n"
+        f"💰 Budjet: {order[5]}\n"
+        f"⏰ Muddat: {order[6]}\n"
+        f"📞 Aloqa: {order[7]}\n"
+        f"📊 Holat: {order[8]}\n"
+        f"📅 Sana: {order[10]}"
+    )
     
     await callback.message.edit_text(
         text,
@@ -720,16 +727,15 @@ async def admin_suggestion_detail(callback: CallbackQuery):
         await callback.answer("Taklif topilmadi")
         return
     
-    text = f"""
-💡 **Taklif #{sug[0]}**
-
-👤 Foydalanuvchi ID: {sug[1]}
-📝 Nomi: {sug[2]}
-📄 Mazmuni: {sug[3]}
-📎 Qo'shimcha: {sug[4]}
-📊 Holat: {sug[5]}
-📅 Sana: {sug[7]}
-    """
+    text = (
+        f"💡 **Taklif #{sug[0]}**\n\n"
+        f"👤 Foydalanuvchi ID: {sug[1]}\n"
+        f"📝 Nomi: {sug[2]}\n"
+        f"📄 Mazmuni: {sug[3]}\n"
+        f"📎 Qo'shimcha: {sug[4]}\n"
+        f"📊 Holat: {sug[5]}\n"
+        f"📅 Sana: {sug[7]}"
+    )
     
     await callback.message.edit_text(
         text,
@@ -760,17 +766,13 @@ async def process_reply(message: Message, state: FSMContext):
     if 'reply_order_id' in data:
         order = db.get_order(data['reply_order_id'])
         db.update_order_status(data['reply_order_id'], 'reviewing', message.text)
-        await message.bot.send_message(
-            order[1],
-            f"📩 Buyurtmangiz #{data['reply_order_id']} bo'yicha javob:\n\n{message.text}"
-        )
+        reply_text = f"📩 Buyurtmangiz #{data['reply_order_id']} bo'yicha javob:\n\n{message.text}"
+        await message.bot.send_message(order[1], reply_text)
     elif 'reply_suggestion_id' in data:
         sug = db.get_suggestion(data['reply_suggestion_id'])
         db.update_suggestion_status(data['reply_suggestion_id'], 'reviewing', message.text)
-        await message.bot.send_message(
-            sug[1],
-            f"💡 Taklifingiz #{data['reply_suggestion_id']} bo'yicha javob:\n\n{message.text}"
-        )
+        reply_text = f"💡 Taklifingiz #{data['reply_suggestion_id']} bo'yicha javob:\n\n{message.text}"
+        await message.bot.send_message(sug[1], reply_text)
     
     await state.clear()
     await message.answer("Javob yuborildi ✅", reply_markup=kb.get_admin_menu_keyboard())
@@ -952,8 +954,9 @@ async def back_to_news_list(callback: CallbackQuery):
 
 @router.callback_query(F.data == "buy_")
 async def buy_product(callback: CallbackQuery):
+    contact = db.get_setting('telegram_contact')
     await callback.answer(
-        "Sotib olish uchun admin bilan bog'laning:\n" + db.get_setting('telegram_contact'),
+        f"Sotib olish uchun admin bilan bog'laning:\n{contact}",
         show_alert=True
     )
 
